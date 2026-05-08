@@ -51,7 +51,7 @@
 
 	<dependencies>
 
-		<!-- API REST MVC -->
+		<!-- API REST MVC - Spring Boot 4 -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
 			<artifactId>spring-boot-starter-webmvc</artifactId>
@@ -147,8 +147,7 @@
 			<artifactId>flyway-sqlserver</artifactId>
 		</dependency>
 
-
-		<!-- Source: https://mvnrepository.com/artifact/org.springframework.security/spring-security-crypto -->
+		<!-- Spring Security Crypto -->
 		<dependency>
 			<groupId>org.springframework.security</groupId>
 			<artifactId>spring-security-crypto</artifactId>
@@ -156,7 +155,7 @@
 			<scope>compile</scope>
 		</dependency>
 
-		<!-- Source: https://mvnrepository.com/artifact/org.bouncycastle/bcprov-jdk18on -->
+		<!-- Bouncy Castle Provider -->
 		<dependency>
 			<groupId>org.bouncycastle</groupId>
 			<artifactId>bcprov-jdk18on</artifactId>
@@ -242,7 +241,6 @@
 			<scope>test</scope>
 		</dependency>
 
-
 		<!-- Tests Mail -->
 		<dependency>
 			<groupId>org.springframework.boot</groupId>
@@ -301,6 +299,7 @@
 							<artifactId>lombok</artifactId>
 							<version>${lombok.version}</version>
 						</path>
+
 						<path>
 							<groupId>org.mapstruct</groupId>
 							<artifactId>mapstruct-processor</artifactId>

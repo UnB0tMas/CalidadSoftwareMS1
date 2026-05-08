@@ -1,3 +1,4 @@
+// src/main/java/com/upsjb/ms1/dto/verificacion/response/VerificationCodeResponseDto.java
 package com.upsjb.ms1.dto.verificacion.response;
 
 import com.upsjb.ms1.domain.enums.EstadoVerificacionCodigo;
@@ -10,6 +11,7 @@ public record VerificationCodeResponseDto(
         String emailDestinoEnmascarado,
         TipoCodigoVerificacion tipoCodigo,
         EstadoVerificacionCodigo estado,
+        String mensaje,
         Instant expiresAt,
         int intentosUsados,
         int maxIntentos

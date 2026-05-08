@@ -1,3 +1,4 @@
+// src/main/java/com/upsjb/ms1/dto/usuario/request/UsuarioCreateRequestDto.java
 package com.upsjb.ms1.dto.usuario.request;
 
 import jakarta.validation.constraints.Email;
@@ -8,7 +9,7 @@ import java.io.Serializable;
 
 public record UsuarioCreateRequestDto(
         @NotBlank(message = "El username es obligatorio.")
-        @Size(min = 3, max = 60, message = "El username debe tener entre 3 y 60 caracteres.")
+        @Size(min = 4, max = 60, message = "El username debe tener entre 4 y 60 caracteres.")
         String username,
 
         @NotBlank(message = "El correo electrónico es obligatorio.")

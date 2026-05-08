@@ -1,3 +1,4 @@
+// src/main/java/com/upsjb/ms1/repository/UsuarioRepository.java
 package com.upsjb.ms1.repository;
 
 import com.upsjb.ms1.domain.entity.Usuario;
@@ -41,7 +42,11 @@ public interface UsuarioRepository extends JpaRepository<Usuario, Long>, JpaSpec
 
     List<Usuario> findByRol_IdAndEstado(Long idRol, EstadoRegistro estado);
 
+    List<Usuario> findTop100ByEstadoOrderByNombresAscApellidosAsc(EstadoRegistro estado);
+
     long countByRol_IdAndEstado(Long idRol, EstadoRegistro estado);
+
+    long countByRol_CodigoIgnoreCaseAndEstado(String codigoRol, EstadoRegistro estado);
 
     long countByEstado(EstadoRegistro estado);
 }

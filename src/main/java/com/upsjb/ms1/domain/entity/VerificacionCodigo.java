@@ -118,9 +118,30 @@ public class VerificacionCodigo extends AuditableEntity {
         return EstadoVerificacionCodigo.VALIDADO.equals(estado);
     }
 
+    public boolean estaBloqueado() {
+        return EstadoVerificacionCodigo.BLOQUEADO.equals(estado);
+    }
+
+    public boolean estaRevocado() {
+        return EstadoVerificacionCodigo.REVOCADO.equals(estado);
+    }
+
+    public boolean estaExpirado() {
+        return EstadoVerificacionCodigo.EXPIRADO.equals(estado);
+    }
+
     public boolean estaExpirado(Instant ahora) {
-        return EstadoVerificacionCodigo.EXPIRADO.equals(estado)
-                || (expiresAt != null && !expiresAt.isAfter(ahora));
+        return estaExpirado()
+                || expiresAt == null
+                || ahora == null
+                || !expiresAt.isAfter(ahora);
+    }
+
+    public boolean estaVigente(Instant ahora) {
+        return estaPendiente()
+                && expiresAt != null
+                && ahora != null
+                && expiresAt.isAfter(ahora);
     }
 
     public boolean tieneIntentosDisponibles() {

@@ -1,3 +1,4 @@
+// src/main/java/com/upsjb/ms1/repository/VerificacionCodigoRepository.java
 package com.upsjb.ms1.repository;
 
 import com.upsjb.ms1.domain.entity.VerificacionCodigo;
@@ -17,6 +18,11 @@ import org.springframework.stereotype.Repository;
 public interface VerificacionCodigoRepository extends JpaRepository<VerificacionCodigo, Long>, JpaSpecificationExecutor<VerificacionCodigo> {
 
     Optional<VerificacionCodigo> findByCodigoHash(String codigoHash);
+
+    Optional<VerificacionCodigo> findFirstByEmail_ValueIgnoreCaseAndTipoCodigoOrderByCreatedAtDesc(
+            String email,
+            TipoCodigoVerificacion tipoCodigo
+    );
 
     Optional<VerificacionCodigo> findFirstByEmail_ValueIgnoreCaseAndTipoCodigoAndEstadoOrderByExpiresAtDesc(
             String email,

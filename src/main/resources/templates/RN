@@ -4,7 +4,7 @@ ms-seguridad-usuarios
 │   │   ├── java
 │   │   │   └── com
 │   │   │       └── upsjb
-│   │   │           └── msseguridadusuarios
+│   │   │           └── ms1
 │   │   │               ├── MsSeguridadUsuariosApplication.java
 │   │   │               │
 │   │   │               ├── config
