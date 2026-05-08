@@ -4,12 +4,14 @@ import com.upsjb.ms1.config.SwaggerSecurityConfig;
 import com.upsjb.ms1.dto.auth.request.LoginRequestDto;
 import com.upsjb.ms1.dto.auth.request.LogoutRequestDto;
 import com.upsjb.ms1.dto.auth.request.RefreshTokenRequestDto;
+import com.upsjb.ms1.dto.auth.request.RegisterClienteRequestDto;
 import com.upsjb.ms1.dto.auth.response.AuthTokenResponseDto;
 import com.upsjb.ms1.dto.auth.response.AuthUserResponseDto;
 import com.upsjb.ms1.dto.auth.response.SessionResponseDto;
 import com.upsjb.ms1.dto.shared.ApiResponseDto;
 import com.upsjb.ms1.security.principal.AuthenticatedUserContext;
 import com.upsjb.ms1.service.contract.AuthService;
+import com.upsjb.ms1.service.contract.ClienteRegistrationService;
 import com.upsjb.ms1.shared.response.ApiResponseFactory;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.security.SecurityRequirement;
@@ -28,19 +30,43 @@ import org.springframework.web.bind.annotation.RestController;
 @RequestMapping("/api/auth")
 @Tag(
         name = "Autenticación",
-        description = "Operaciones de autenticación, refresh token, cierre de sesión y usuario autenticado."
+        description = "Operaciones de autenticación, registro, refresh token, cierre de sesión y usuario autenticado."
 )
 public class AuthController {
 
     private final AuthService authService;
+    private final ClienteRegistrationService clienteRegistrationService;
     private final ApiResponseFactory apiResponseFactory;
 
     public AuthController(
             AuthService authService,
+            ClienteRegistrationService clienteRegistrationService,
             ApiResponseFactory apiResponseFactory
     ) {
         this.authService = authService;
+        this.clienteRegistrationService = clienteRegistrationService;
         this.apiResponseFactory = apiResponseFactory;
+    }
+
+    @PostMapping("/register")
+    @Operation(
+            summary = "Registrar cliente",
+            description = "Registra públicamente un usuario con rol CLIENTE y retorna access token, refresh token, usuario y sesión."
+    )
+    @ApiResponses({
+            @ApiResponse(responseCode = "200", description = "Cliente registrado correctamente."),
+            @ApiResponse(responseCode = "400", description = "Solicitud inválida."),
+            @ApiResponse(responseCode = "409", description = "Username o correo duplicado.")
+    })
+    public ResponseEntity<ApiResponseDto<AuthTokenResponseDto>> register(
+            @Valid @RequestBody RegisterClienteRequestDto request
+    ) {
+        AuthTokenResponseDto response = clienteRegistrationService.register(request);
+
+        return ResponseEntity.ok(apiResponseFactory.ok(
+                "Cliente registrado correctamente.",
+                response
+        ));
     }
 
     @PostMapping("/login")

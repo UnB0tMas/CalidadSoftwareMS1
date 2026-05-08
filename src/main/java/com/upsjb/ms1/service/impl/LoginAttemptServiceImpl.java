@@ -36,7 +36,6 @@ import org.springframework.data.domain.PageRequest;
 import org.springframework.data.domain.Pageable;
 import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -79,7 +78,7 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public LoginAttemptResponseDto recordSuccess(
             Usuario usuario,
             String usernameOrEmail,
@@ -96,7 +95,28 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
+    public LoginAttemptResponseDto recordSuccess(
+            Usuario usuario,
+            String usernameOrEmail,
+            TipoLogin tipoLogin,
+            String ipAddress,
+            String userAgent
+    ) {
+        return recordAttempt(
+                usuario,
+                usernameOrEmail,
+                tipoLogin,
+                true,
+                null,
+                null,
+                ipAddress,
+                userAgent
+        );
+    }
+
+    @Override
+    @Transactional
     public LoginAttemptResponseDto recordFailure(
             Usuario usuario,
             String usernameOrEmail,
@@ -115,7 +135,30 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
+    public LoginAttemptResponseDto recordFailure(
+            Usuario usuario,
+            String usernameOrEmail,
+            TipoLogin tipoLogin,
+            String failureCode,
+            String failureReason,
+            String ipAddress,
+            String userAgent
+    ) {
+        return recordAttempt(
+                usuario,
+                usernameOrEmail,
+                tipoLogin,
+                false,
+                failureCode,
+                failureReason,
+                ipAddress,
+                userAgent
+        );
+    }
+
+    @Override
+    @Transactional
     public LoginAttemptResponseDto recordAttempt(
             Usuario usuario,
             String usernameOrEmail,
@@ -123,6 +166,30 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
             boolean exitoso,
             String failureCode,
             String failureReason
+    ) {
+        return recordAttempt(
+                usuario,
+                usernameOrEmail,
+                tipoLogin,
+                exitoso,
+                failureCode,
+                failureReason,
+                null,
+                null
+        );
+    }
+
+    @Override
+    @Transactional
+    public LoginAttemptResponseDto recordAttempt(
+            Usuario usuario,
+            String usernameOrEmail,
+            TipoLogin tipoLogin,
+            boolean exitoso,
+            String failureCode,
+            String failureReason,
+            String ipAddress,
+            String userAgent
     ) {
         return executeWithTechnicalLog(
                 "recordAttempt",
@@ -139,8 +206,8 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
                             .exitoso(exitoso)
                             .failureCode(truncate(failureCode, 80))
                             .failureReason(truncate(failureReason, 250))
-                            .ipAddress(IpAddressValue.of(resolveIpAddress()))
-                            .userAgent(UserAgentValue.of(resolveUserAgent()))
+                            .ipAddress(IpAddressValue.of(resolveIpAddress(ipAddress)))
+                            .userAgent(UserAgentValue.of(resolveUserAgent(userAgent)))
                             .attemptedAt(Instant.now(clock))
                             .requestId(AuditContextHolder.getRequestIdOrNull())
                             .build();
@@ -232,10 +299,14 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
 
                     return loginAttemptRepository.findRecentByUsernameOrEmailIgnoreCase(
                                     normalized,
-                                    PageRequest.of(0, 10, Sort.by(
-                                            Sort.Order.desc("attemptedAt"),
-                                            Sort.Order.desc("id")
-                                    ))
+                                    PageRequest.of(
+                                            0,
+                                            10,
+                                            Sort.by(
+                                                    Sort.Order.desc("attemptedAt"),
+                                                    Sort.Order.desc("id")
+                                            )
+                                    )
                             )
                             .stream()
                             .map(loginAttemptMapper::toResponse)
@@ -362,14 +433,36 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
         }
     }
 
-    private String resolveIpAddress() {
+    private String resolveIpAddress(String explicitIpAddress) {
+        String normalizedExplicitIp = StringNormalizer.trimToNull(explicitIpAddress);
+
+        if (normalizedExplicitIp != null) {
+            return truncate(normalizedExplicitIp, 45);
+        }
+
         AuditContext context = AuditContextHolder.get();
+
+        if (context == null) {
+            return DEFAULT_IP;
+        }
+
         String ipAddress = StringNormalizer.trimToNull(context.ipAddress());
         return ipAddress == null ? DEFAULT_IP : truncate(ipAddress, 45);
     }
 
-    private String resolveUserAgent() {
+    private String resolveUserAgent(String explicitUserAgent) {
+        String normalizedExplicitUserAgent = StringNormalizer.trimToNull(explicitUserAgent);
+
+        if (normalizedExplicitUserAgent != null) {
+            return truncate(normalizedExplicitUserAgent, 512);
+        }
+
         AuditContext context = AuditContextHolder.get();
+
+        if (context == null) {
+            return DEFAULT_USER_AGENT;
+        }
+
         String userAgent = StringNormalizer.trimToNull(context.userAgent());
         return userAgent == null ? DEFAULT_USER_AGENT : truncate(userAgent, 512);
     }
@@ -411,7 +504,8 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
             return "ANONIMO";
         }
 
-        if (usuario.getUsername() != null && StringNormalizer.trimToNull(usuario.getUsername().getValue()) != null) {
+        if (usuario.getUsername() != null
+                && StringNormalizer.trimToNull(usuario.getUsername().getValue()) != null) {
             return usuario.getUsername().getValue();
         }
 
@@ -437,7 +531,10 @@ public class LoginAttemptServiceImpl implements LoginAttemptService {
         return normalized == null ? "SIN_IP" : truncate(normalized, 45);
     }
 
-    private String truncate(String value, int maxLength) {
+    private String truncate(
+            String value,
+            int maxLength
+    ) {
         String normalized = StringNormalizer.normalizeSpaces(value);
 
         if (normalized == null || normalized.length() <= maxLength) {

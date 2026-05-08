@@ -4,6 +4,7 @@ import com.upsjb.ms1.domain.entity.Rol;
 import com.upsjb.ms1.domain.enums.EstadoRegistro;
 import com.upsjb.ms1.repository.RolRepository;
 import com.upsjb.ms1.repository.UsuarioRepository;
+import com.upsjb.ms1.security.roles.SecurityRoles;
 import com.upsjb.ms1.shared.exception.ConflictException;
 import com.upsjb.ms1.shared.exception.NotFoundException;
 import com.upsjb.ms1.shared.exception.ValidationException;
@@ -47,6 +48,8 @@ public class RolValidator {
 
     public void validateCreate(String codigo, String nombre) {
         String codigoNormalizado = normalizeCodigo(codigo);
+        validateSystemRoleCode(codigoNormalizado);
+
         String nombreNormalizado = normalizeNombre(nombre);
 
         if (rolRepository.existsByCodigoIgnoreCase(codigoNormalizado)) {
@@ -127,6 +130,17 @@ public class RolValidator {
             throw new ConflictException(
                     "ROL_CON_USUARIOS_ACTIVOS",
                     "No se puede inactivar el rol porque tiene usuarios activos asociados."
+            );
+        }
+    }
+
+    private void validateSystemRoleCode(String codigoNormalizado) {
+        String normalized = SecurityRoles.normalizeRoleCode(codigoNormalizado);
+
+        if (!SecurityRoles.SYSTEM_ROLE_CODES.contains(normalized)) {
+            throw new ValidationException(
+                    "ROL_CODIGO_NO_PERMITIDO",
+                    "Solo se permiten los roles ADMIN, EMPLEADO y CLIENTE."
             );
         }
     }

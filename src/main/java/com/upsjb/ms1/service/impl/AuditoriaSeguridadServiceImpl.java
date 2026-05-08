@@ -42,7 +42,6 @@ import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
 
 @Service
@@ -111,7 +110,7 @@ public class AuditoriaSeguridadServiceImpl implements AuditoriaSeguridadService 
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public AuditoriaSeguridadResponseDto registerSuccess(
             TipoAuditoriaSeguridad tipo,
             Usuario actor,
@@ -122,7 +121,7 @@ public class AuditoriaSeguridadServiceImpl implements AuditoriaSeguridadService 
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public AuditoriaSeguridadResponseDto registerSuccess(
             TipoAuditoriaSeguridad tipo,
             Usuario actor,
@@ -141,7 +140,7 @@ public class AuditoriaSeguridadServiceImpl implements AuditoriaSeguridadService 
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public AuditoriaSeguridadResponseDto registerFailure(
             TipoAuditoriaSeguridad tipo,
             Usuario actor,
@@ -152,7 +151,7 @@ public class AuditoriaSeguridadServiceImpl implements AuditoriaSeguridadService 
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public AuditoriaSeguridadResponseDto registerFailure(
             TipoAuditoriaSeguridad tipo,
             Usuario actor,
@@ -171,7 +170,7 @@ public class AuditoriaSeguridadServiceImpl implements AuditoriaSeguridadService 
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public AuditoriaSeguridadResponseDto registerWarning(
             TipoAuditoriaSeguridad tipo,
             Usuario actor,
@@ -182,7 +181,7 @@ public class AuditoriaSeguridadServiceImpl implements AuditoriaSeguridadService 
     }
 
     @Override
-    @Transactional(propagation = Propagation.REQUIRES_NEW)
+    @Transactional
     public AuditoriaSeguridadResponseDto registerWarning(
             TipoAuditoriaSeguridad tipo,
             Usuario actor,
@@ -469,7 +468,8 @@ public class AuditoriaSeguridadServiceImpl implements AuditoriaSeguridadService 
             return "ANONIMO";
         }
 
-        if (usuario.getUsername() != null && StringNormalizer.trimToNull(usuario.getUsername().getValue()) != null) {
+        if (usuario.getUsername() != null
+                && StringNormalizer.trimToNull(usuario.getUsername().getValue()) != null) {
             return usuario.getUsername().getValue();
         }
 

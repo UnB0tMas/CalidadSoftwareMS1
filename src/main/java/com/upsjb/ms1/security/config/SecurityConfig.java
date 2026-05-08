@@ -7,7 +7,9 @@ import com.upsjb.ms1.security.handler.RestAccessDeniedHandler;
 import com.upsjb.ms1.security.handler.RestAuthenticationEntryPoint;
 import com.upsjb.ms1.security.handler.RestLogoutSuccessHandler;
 import com.upsjb.ms1.security.jwt.RoleJwtAuthenticationConverter;
+import com.upsjb.ms1.security.oauth2.CookieOAuth2AuthorizationRequestRepository;
 import com.upsjb.ms1.security.oauth2.CustomOAuth2UserService;
+import com.upsjb.ms1.security.oauth2.CustomOidcUserService;
 import com.upsjb.ms1.security.oauth2.OAuth2LoginFailureHandler;
 import com.upsjb.ms1.security.oauth2.OAuth2LoginSuccessHandler;
 import com.upsjb.ms1.security.roles.SecurityRoles;
@@ -29,16 +31,20 @@ import org.springframework.web.cors.CorsConfigurationSource;
 @Configuration
 public class SecurityConfig {
 
+    private static final String[] OAUTH2_LOGIN_ENDPOINTS = {
+            "/oauth2/authorization/**",
+            "/login/oauth2/**"
+    };
+
     private static final String[] PUBLIC_ENDPOINTS = {
             "/api/auth/login",
+            "/api/auth/register",
             "/api/auth/refresh",
             "/api/password/forgot",
             "/api/password/reset",
             "/api/verificaciones/enviar",
             "/api/verificaciones/validar",
             "/api/verificaciones/reenviar",
-            "/oauth2/**",
-            "/login/oauth2/**",
             "/.well-known/**",
             "/actuator/health",
             "/actuator/health/**",
@@ -60,6 +66,56 @@ public class SecurityConfig {
 
     @Bean
     @Order(2)
+    public SecurityFilterChain oauth2LoginSecurityFilterChain(
+            HttpSecurity http,
+            CorsConfigurationSource corsConfigurationSource,
+            RestAuthenticationEntryPoint authenticationEntryPoint,
+            RestAccessDeniedHandler accessDeniedHandler,
+            RequestTraceFilter requestTraceFilter,
+            RequestAuditFilter requestAuditFilter,
+            CustomOAuth2UserService customOAuth2UserService,
+            CustomOidcUserService customOidcUserService,
+            OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler,
+            OAuth2LoginFailureHandler oAuth2LoginFailureHandler,
+            CookieOAuth2AuthorizationRequestRepository cookieOAuth2AuthorizationRequestRepository
+    ) throws Exception {
+        http
+                .securityMatcher(OAUTH2_LOGIN_ENDPOINTS)
+                .csrf(AbstractHttpConfigurer::disable)
+                .cors(cors -> cors.configurationSource(corsConfigurationSource))
+                .sessionManagement(session -> session.sessionCreationPolicy(SessionCreationPolicy.IF_REQUIRED))
+                .exceptionHandling(exceptionHandling -> exceptionHandling
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler)
+                )
+                .authorizeHttpRequests(authorize -> authorize
+                        .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll()
+                        .requestMatchers(OAUTH2_LOGIN_ENDPOINTS).permitAll()
+                        .anyRequest().permitAll()
+                )
+                .oauth2Login(oauth2 -> oauth2
+                        .authorizationEndpoint(authorization -> authorization
+                                .baseUri("/oauth2/authorization")
+                                .authorizationRequestRepository(cookieOAuth2AuthorizationRequestRepository)
+                        )
+                        .redirectionEndpoint(redirection -> redirection
+                                .baseUri("/login/oauth2/code/*")
+                        )
+                        .userInfoEndpoint(userInfo -> userInfo
+                                .userService(customOAuth2UserService)
+                                .oidcUserService(customOidcUserService)
+                        )
+                        .successHandler(oAuth2LoginSuccessHandler)
+                        .failureHandler(oAuth2LoginFailureHandler)
+                )
+                .addFilterBefore(requestTraceFilter, UsernamePasswordAuthenticationFilter.class)
+                .addFilterAfter(requestAuditFilter, RequestTraceFilter.class);
+
+        return http.build();
+    }
+
+    @Bean
+    @Order(3)
     public SecurityFilterChain apiSecurityFilterChain(
             HttpSecurity http,
             CorsConfigurationSource corsConfigurationSource,
@@ -69,10 +125,7 @@ public class SecurityConfig {
             RoleJwtAuthenticationConverter roleJwtAuthenticationConverter,
             RequestTraceFilter requestTraceFilter,
             RequestAuditFilter requestAuditFilter,
-            SecurityContextFilter securityContextFilter,
-            CustomOAuth2UserService customOAuth2UserService,
-            OAuth2LoginSuccessHandler oAuth2LoginSuccessHandler,
-            OAuth2LoginFailureHandler oAuth2LoginFailureHandler
+            SecurityContextFilter securityContextFilter
     ) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -98,11 +151,6 @@ public class SecurityConfig {
                         .jwt(jwt -> jwt.jwtAuthenticationConverter(roleJwtAuthenticationConverter))
                         .authenticationEntryPoint(authenticationEntryPoint)
                         .accessDeniedHandler(accessDeniedHandler)
-                )
-                .oauth2Login(oauth2 -> oauth2
-                        .userInfoEndpoint(userInfo -> userInfo.userService(customOAuth2UserService))
-                        .successHandler(oAuth2LoginSuccessHandler)
-                        .failureHandler(oAuth2LoginFailureHandler)
                 )
                 .logout(logout -> logout
                         .logoutUrl("/api/auth/logout")

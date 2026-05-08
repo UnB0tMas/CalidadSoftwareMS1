@@ -18,10 +18,37 @@ public interface LoginAttemptService {
             TipoLogin tipoLogin
     );
 
+    LoginAttemptResponseDto recordSuccess(
+            Usuario usuario,
+            String usernameOrEmail,
+            TipoLogin tipoLogin,
+            String ipAddress,
+            String userAgent
+    );
+
     LoginAttemptResponseDto recordFailure(
             Usuario usuario,
             String usernameOrEmail,
             TipoLogin tipoLogin,
+            String failureCode,
+            String failureReason
+    );
+
+    LoginAttemptResponseDto recordFailure(
+            Usuario usuario,
+            String usernameOrEmail,
+            TipoLogin tipoLogin,
+            String failureCode,
+            String failureReason,
+            String ipAddress,
+            String userAgent
+    );
+
+    LoginAttemptResponseDto recordAttempt(
+            Usuario usuario,
+            String usernameOrEmail,
+            TipoLogin tipoLogin,
+            boolean exitoso,
             String failureCode,
             String failureReason
     );
@@ -32,7 +59,9 @@ public interface LoginAttemptService {
             TipoLogin tipoLogin,
             boolean exitoso,
             String failureCode,
-            String failureReason
+            String failureReason,
+            String ipAddress,
+            String userAgent
     );
 
     LoginAttemptResponseDto findById(

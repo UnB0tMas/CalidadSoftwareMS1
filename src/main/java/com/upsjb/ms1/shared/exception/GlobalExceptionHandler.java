@@ -19,6 +19,7 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.HandlerMethodValidationException;
+import org.springframework.web.servlet.resource.NoResourceFoundException;
 
 @RestControllerAdvice
 public class GlobalExceptionHandler {
@@ -134,6 +135,39 @@ public class GlobalExceptionHandler {
         );
 
         return ResponseEntity.status(HttpStatus.FORBIDDEN).body(response);
+    }
+
+    @ExceptionHandler(NoResourceFoundException.class)
+    public ResponseEntity<ErrorResponseDto> handleNoResourceFound(
+            NoResourceFoundException exception,
+            HttpServletRequest request
+    ) {
+        String path = request.getRequestURI();
+
+        if (path != null && path.startsWith("/.well-known/appspecific/")) {
+            log.debug(
+                    "Recurso técnico de navegador no encontrado. requestId={}, method={}, path={}",
+                    AuditContextHolder.getRequestIdOrNull(),
+                    request.getMethod(),
+                    path
+            );
+            return ResponseEntity.status(HttpStatus.NOT_FOUND).build();
+        }
+
+        log.warn(
+                "Recurso no encontrado. requestId={}, method={}, path={}",
+                AuditContextHolder.getRequestIdOrNull(),
+                request.getMethod(),
+                path
+        );
+
+        ErrorResponseDto response = errorResponseFactory.error(
+                "El recurso solicitado no existe.",
+                "NOT_FOUND",
+                "RESOURCE_NOT_FOUND"
+        );
+
+        return ResponseEntity.status(HttpStatus.NOT_FOUND).body(response);
     }
 
     @ExceptionHandler(Exception.class)

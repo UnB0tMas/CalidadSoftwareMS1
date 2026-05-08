@@ -63,6 +63,7 @@ public class AuthServiceImpl implements AuthService {
     private static final int NAME_MAX_LENGTH = 120;
     private static final int DISPLAY_NAME_MAX_LENGTH = 160;
     private static final int AVATAR_URL_MAX_LENGTH = 500;
+    private static final int OAUTH2_INTERNAL_PASSWORD_TOKEN_BYTES = 32;
 
     private final UsuarioRepository usuarioRepository;
     private final UsuarioOAuth2CuentaRepository usuarioOAuth2CuentaRepository;
@@ -203,15 +204,28 @@ public class AuthServiceImpl implements AuthService {
             String ipAddress,
             String userAgent
     ) {
+        String normalizedIpAddress = normalizeIpAddress(ipAddress);
+        String normalizedUserAgent = normalizeUserAgent(userAgent);
+
         return executeWithTechnicalLog(
                 "loginOAuth2",
                 "OAUTH2",
                 userInfo == null ? null : userInfo.proveedor(),
                 () -> {
                     try {
-                        return doLoginOAuth2(userInfo, deviceFingerprint, ipAddress, userAgent);
+                        return doLoginOAuth2(
+                                userInfo,
+                                deviceFingerprint,
+                                normalizedIpAddress,
+                                normalizedUserAgent
+                        );
                     } catch (BusinessException exception) {
-                        registerOAuth2Failure(userInfo, exception);
+                        registerOAuth2Failure(
+                                userInfo,
+                                exception,
+                                normalizedIpAddress,
+                                normalizedUserAgent
+                        );
                         throw exception;
                     }
                 }
@@ -329,15 +343,23 @@ public class AuthServiceImpl implements AuthService {
 
         Usuario usuario;
         boolean cuentaCreada = false;
+        boolean usuarioCreadoPorOAuth2 = false;
 
         if (cuenta != null) {
             validateOAuth2CuentaActiva(cuenta);
+
             usuario = requireUsuarioFromOAuth2Cuenta(cuenta);
             authValidator.validateUsuarioPuedeAutenticarse(usuario);
+
             updateOAuth2Cuenta(cuenta, userInfo, now);
         } else {
-            usuario = resolveOrCreateOAuth2Usuario(userInfo, email);
+            OAuth2UserResolution resolution = resolveOrCreateOAuth2Usuario(userInfo, email);
+
+            usuario = resolution.usuario();
+            usuarioCreadoPorOAuth2 = resolution.usuarioCreado();
+
             authValidator.validateUsuarioPuedeAutenticarse(usuario);
+
             cuenta = createOAuth2Cuenta(usuario, userInfo, now);
             cuentaCreada = true;
         }
@@ -346,32 +368,50 @@ public class AuthServiceImpl implements AuthService {
         Usuario savedUsuario = usuarioRepository.save(usuario);
         UsuarioOAuth2Cuenta savedCuenta = usuarioOAuth2CuentaRepository.save(cuenta);
 
+        String normalizedIpAddress = normalizeIpAddress(ipAddress);
+        String normalizedUserAgent = normalizeUserAgent(userAgent);
+
         SesionService.CreatedSession createdSession = sesionService.createSession(
                 savedUsuario,
                 TipoLogin.OAUTH2,
                 deviceFingerprint,
-                normalizeIpAddress(ipAddress),
-                normalizeUserAgent(userAgent)
+                normalizedIpAddress,
+                normalizedUserAgent
         );
 
         loginAttemptService.recordSuccess(
                 savedUsuario,
                 email,
-                TipoLogin.OAUTH2
+                TipoLogin.OAUTH2,
+                normalizedIpAddress,
+                normalizedUserAgent
         );
 
         usuarioIpHistorialService.registerUsage(
                 savedUsuario,
-                normalizeIpAddress(ipAddress),
-                normalizeUserAgent(userAgent)
+                normalizedIpAddress,
+                normalizedUserAgent
         );
+
+        if (usuarioCreadoPorOAuth2) {
+            auditoriaSeguridadService.registerSuccess(
+                    TipoAuditoriaSeguridad.USUARIO_CREADO,
+                    savedUsuario,
+                    savedUsuario,
+                    "Usuario CLIENTE creado automáticamente mediante OAuth2."
+            );
+        }
 
         if (cuentaCreada) {
             auditoriaSeguridadService.registerSuccess(
                     TipoAuditoriaSeguridad.OAUTH2_CUENTA_VINCULADA,
                     savedUsuario,
                     savedUsuario,
-                    "Cuenta OAuth2 vinculada con proveedor " + savedCuenta.getProveedor() + "."
+                    "Cuenta OAuth2 vinculada con proveedor "
+                            + savedCuenta.getProveedor()
+                            + " para usuario con rol "
+                            + resolveUsuarioRolCodigo(savedUsuario)
+                            + "."
             );
         }
 
@@ -390,7 +430,7 @@ public class AuthServiceImpl implements AuthService {
         );
     }
 
-    private Usuario resolveOrCreateOAuth2Usuario(
+    private OAuth2UserResolution resolveOrCreateOAuth2Usuario(
             OAuth2UserInfo userInfo,
             String email
     ) {
@@ -398,7 +438,12 @@ public class AuthServiceImpl implements AuthService {
 
         if (existing != null) {
             validateProviderNotAlreadyLinkedToDifferentAccount(userInfo.proveedor(), existing.getId());
-            return existing;
+
+            if (userInfo.emailVerified()) {
+                existing.marcarEmailVerificado();
+            }
+
+            return new OAuth2UserResolution(existing, false);
         }
 
         Rol clienteRole = rolRepository.findByCodigoIgnoreCase(SecurityRoles.CLIENTE)
@@ -421,7 +466,7 @@ public class AuthServiceImpl implements AuthService {
                 .rol(clienteRole)
                 .username(UsernameValue.of(username))
                 .email(EmailValue.of(email))
-                .passwordHash(passwordEncoder.encode(RandomTokenUtil.secureToken()))
+                .passwordHash(generateOAuth2InternalPasswordHash())
                 .nombres(nombrePartes[0])
                 .apellidos(nombrePartes[1])
                 .estado(EstadoRegistro.ACTIVO)
@@ -429,7 +474,18 @@ public class AuthServiceImpl implements AuthService {
                 .requiereCambioPassword(false)
                 .build();
 
-        return usuarioRepository.save(usuario);
+        return new OAuth2UserResolution(usuarioRepository.save(usuario), true);
+    }
+
+    private String generateOAuth2InternalPasswordHash() {
+        /*
+         * BCrypt acepta como entrada máxima 72 bytes. RandomTokenUtil.secureToken()
+         * genera 64 bytes aleatorios y luego Base64Url, lo que produce una cadena
+         * mayor a ese límite. Para usuarios OAuth2 no se usa contraseña local, pero
+         * la entidad exige password_hash no nulo; por eso se guarda un secreto
+         * interno aleatorio de 32 bytes, codificado antes de persistir.
+         */
+        return passwordEncoder.encode(RandomTokenUtil.secureToken(OAUTH2_INTERNAL_PASSWORD_TOKEN_BYTES));
     }
 
     private UsuarioOAuth2Cuenta createOAuth2Cuenta(
@@ -462,6 +518,15 @@ public class AuthServiceImpl implements AuthService {
         cuenta.setDisplayName(truncate(StringNormalizer.normalizeSpaces(userInfo.name()), DISPLAY_NAME_MAX_LENGTH));
         cuenta.setAvatarUrl(truncate(StringNormalizer.trimToNull(userInfo.avatarUrl()), AVATAR_URL_MAX_LENGTH));
         cuenta.registrarLogin(now);
+    }
+
+    private String resolveUsuarioRolCodigo(Usuario usuario) {
+        if (usuario == null || usuario.getRol() == null) {
+            return "SIN_ROL";
+        }
+
+        String codigo = SecurityRoles.normalizeRoleCode(usuario.getRol().getCodigo());
+        return codigo == null ? "SIN_ROL" : codigo;
     }
 
     private void validateOAuth2UserInfo(OAuth2UserInfo userInfo) {
@@ -558,7 +623,9 @@ public class AuthServiceImpl implements AuthService {
 
     private void registerOAuth2Failure(
             OAuth2UserInfo userInfo,
-            BusinessException exception
+            BusinessException exception,
+            String ipAddress,
+            String userAgent
     ) {
         String identifier = resolveOAuth2AttemptIdentifier(userInfo);
 
@@ -567,7 +634,9 @@ public class AuthServiceImpl implements AuthService {
                 identifier,
                 TipoLogin.OAUTH2,
                 exception.getCode(),
-                exception.getMessage()
+                exception.getMessage(),
+                normalizeIpAddress(ipAddress),
+                normalizeUserAgent(userAgent)
         );
 
         auditoriaSeguridadService.registerFailure(
@@ -813,12 +882,22 @@ public class AuthServiceImpl implements AuthService {
 
     private String resolveIpAddress() {
         AuditContext context = AuditContextHolder.get();
+
+        if (context == null) {
+            return DEFAULT_IP;
+        }
+
         String ipAddress = StringNormalizer.trimToNull(context.ipAddress());
         return ipAddress == null ? DEFAULT_IP : ipAddress;
     }
 
     private String resolveUserAgent() {
         AuditContext context = AuditContextHolder.get();
+
+        if (context == null) {
+            return DEFAULT_USER_AGENT;
+        }
+
         String userAgent = StringNormalizer.trimToNull(context.userAgent());
         return userAgent == null ? DEFAULT_USER_AGENT : userAgent;
     }
@@ -864,5 +943,11 @@ public class AuthServiceImpl implements AuthService {
 
         String username = StringNormalizer.trimToNull(actor.username());
         return username == null ? "ID_" + actor.idUsuario() : username;
+    }
+
+    private record OAuth2UserResolution(
+            Usuario usuario,
+            boolean usuarioCreado
+    ) {
     }
 }
