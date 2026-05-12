@@ -1,33 +1,70 @@
-HELP.md
-target/
+﻿# =========================================================
+# JAVA / SPRING BOOT
+# =========================================================
+/target/
+*.class
+*.jar
+*.war
+*.ear
+
+# =========================================================
+# MAVEN / GRADLE
+# =========================================================
 .mvn/wrapper/maven-wrapper.jar
-!**/src/main/**/target/
-!**/src/test/**/target/
+.gradle/
+build/
+out/
 
-### STS ###
-.apt_generated
-.classpath
-.factorypath
-.project
-.settings
-.springBeans
-.sts4-cache
-
-### IntelliJ IDEA ###
-.idea
-*.iws
+# =========================================================
+# INTELLIJ IDEA
+# =========================================================
+.idea/
 *.iml
+*.iws
 *.ipr
 
-### NetBeans ###
-/nbproject/private/
-/nbbuild/
-/dist/
-/nbdist/
-/.nb-gradle/
-build/
-!**/src/main/**/build/
-!**/src/test/**/build/
-
-### VS Code ###
+# =========================================================
+# VS CODE
+# =========================================================
 .vscode/
+
+# =========================================================
+# SISTEMA OPERATIVO
+# =========================================================
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# =========================================================
+# LOGS
+# =========================================================
+*.log
+logs/
+
+# =========================================================
+# ARCHIVOS LOCALES / SECRETOS
+# =========================================================
+.env
+.env.*
+!.env.example
+
+/src/main/resources/application.properties
+/src/main/resources/application-local.properties
+/src/main/resources/application-dev.properties
+/src/main/resources/application-prod.properties
+
+# Llaves RSA / JWT / OAuth / certificados
+/src/main/resources/keys/
+/src/main/resources/**/*.pem
+/src/main/resources/**/*.key
+/src/main/resources/**/*.crt
+/src/main/resources/**/*.p12
+/src/main/resources/**/*.jks
+/src/main/resources/**/*.keystore
+
+# =========================================================
+# ARCHIVOS COMPILADOS QUE NO DEBEN SUBIRSE
+# =========================================================
+/target/
+/bin/
+/tmp/

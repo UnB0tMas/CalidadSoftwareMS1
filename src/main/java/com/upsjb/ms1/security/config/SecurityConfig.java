@@ -1,5 +1,7 @@
+// ruta: src/main/java/com/upsjb/ms1/security/config/SecurityConfig.java
 package com.upsjb.ms1.security.config;
 
+import com.upsjb.ms1.security.filter.InternalApiKeyFilter;
 import com.upsjb.ms1.security.filter.RequestAuditFilter;
 import com.upsjb.ms1.security.filter.RequestTraceFilter;
 import com.upsjb.ms1.security.filter.SecurityContextFilter;
@@ -125,7 +127,8 @@ public class SecurityConfig {
             RoleJwtAuthenticationConverter roleJwtAuthenticationConverter,
             RequestTraceFilter requestTraceFilter,
             RequestAuditFilter requestAuditFilter,
-            SecurityContextFilter securityContextFilter
+            SecurityContextFilter securityContextFilter,
+            InternalApiKeyFilter internalApiKeyFilter
     ) throws Exception {
         http
                 .csrf(AbstractHttpConfigurer::disable)
@@ -158,6 +161,7 @@ public class SecurityConfig {
                 )
                 .addFilterBefore(requestTraceFilter, UsernamePasswordAuthenticationFilter.class)
                 .addFilterAfter(requestAuditFilter, RequestTraceFilter.class)
+                .addFilterBefore(internalApiKeyFilter, SecurityContextFilter.class)
                 .addFilterAfter(securityContextFilter, RequestAuditFilter.class);
 
         return http.build();

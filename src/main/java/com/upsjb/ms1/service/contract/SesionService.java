@@ -1,3 +1,4 @@
+// ruta: src/main/java/com/upsjb/ms1/service/contract/SesionService.java
 package com.upsjb.ms1.service.contract;
 
 import com.upsjb.ms1.domain.entity.Usuario;
@@ -5,6 +6,8 @@ import com.upsjb.ms1.domain.entity.UsuarioSesion;
 import com.upsjb.ms1.domain.enums.EstadoSesion;
 import com.upsjb.ms1.domain.enums.TipoLogin;
 import com.upsjb.ms1.dto.auth.response.SessionResponseDto;
+import com.upsjb.ms1.dto.internal.request.InternalSessionValidationRequestDto;
+import com.upsjb.ms1.dto.internal.response.InternalSessionValidationResponseDto;
 import com.upsjb.ms1.dto.shared.PageRequestDto;
 import com.upsjb.ms1.dto.shared.PageResponseDto;
 import com.upsjb.ms1.security.principal.AuthenticatedUserContext;
@@ -57,6 +60,11 @@ public interface SesionService {
     );
 
     int expireExpiredSessions();
+
+    InternalSessionValidationResponseDto validateInternalSession(
+            AuthenticatedUserContext actor,
+            InternalSessionValidationRequestDto request
+    );
 
     record CreatedSession(
             UsuarioSesion session,

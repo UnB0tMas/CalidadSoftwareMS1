@@ -5,21 +5,26 @@ import jakarta.servlet.http.HttpServletRequest;
 public final class IpAddressUtil {
 
     private static final String UNKNOWN = "unknown";
+    private static final String DEFAULT_IP = "0.0.0.0";
+    private static final int MAX_IP_LENGTH = 45;
 
     private IpAddressUtil() {
     }
 
     public static String extractClientIp(HttpServletRequest request) {
         if (request == null) {
-            return "0.0.0.0";
+            return DEFAULT_IP;
         }
 
-        String forwardedFor = firstValidHeader(request, "X-Forwarded-For");
+        String forwardedFor = firstValidHeader(request, RequestMetadataUtil.FORWARDED_FOR_HEADER);
         if (forwardedFor != null) {
-            return forwardedFor.split(",")[0].trim();
+            String firstIp = firstForwardedIp(forwardedFor);
+            if (firstIp != null) {
+                return firstIp;
+            }
         }
 
-        String realIp = firstValidHeader(request, "X-Real-IP");
+        String realIp = firstValidHeader(request, RequestMetadataUtil.REAL_IP_HEADER);
         if (realIp != null) {
             return realIp;
         }
@@ -30,11 +35,58 @@ public final class IpAddressUtil {
         }
 
         String remoteAddress = request.getRemoteAddr();
-        return remoteAddress == null || remoteAddress.isBlank() ? "0.0.0.0" : remoteAddress;
+        String sanitizedRemote = sanitizeIp(remoteAddress);
+
+        return sanitizedRemote == null ? DEFAULT_IP : sanitizedRemote;
     }
 
-    private static String firstValidHeader(HttpServletRequest request, String name) {
+    private static String firstForwardedIp(String forwardedFor) {
+        if (forwardedFor == null || forwardedFor.isBlank()) {
+            return null;
+        }
+
+        String[] parts = forwardedFor.split(",");
+
+        for (String part : parts) {
+            String ip = sanitizeIp(part);
+
+            if (ip != null) {
+                return ip;
+            }
+        }
+
+        return null;
+    }
+
+    private static String firstValidHeader(
+            HttpServletRequest request,
+            String name
+    ) {
         String value = request.getHeader(name);
-        return value == null || value.isBlank() || UNKNOWN.equalsIgnoreCase(value.trim()) ? null : value.trim();
+        return sanitizeIp(value);
+    }
+
+    private static String sanitizeIp(String value) {
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+
+        String sanitized = value
+                .trim()
+                .replace("\r", "")
+                .replace("\n", "")
+                .replace("\t", "");
+
+        if (sanitized.isBlank()
+                || UNKNOWN.equalsIgnoreCase(sanitized)
+                || "null".equalsIgnoreCase(sanitized)) {
+            return null;
+        }
+
+        if (sanitized.length() > MAX_IP_LENGTH) {
+            return sanitized.substring(0, MAX_IP_LENGTH);
+        }
+
+        return sanitized;
     }
 }

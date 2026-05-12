@@ -12,6 +12,9 @@ import jakarta.servlet.http.HttpServletResponse;
 import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.http.MediaType;
 import org.springframework.security.authentication.BadCredentialsException;
@@ -24,8 +27,17 @@ import org.springframework.stereotype.Component;
 @Component
 public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
 
+    private static final Logger log = LoggerFactory.getLogger(OAuth2LoginSuccessHandler.class);
+
     private static final int TOKEN_VISIBLE_PREFIX = 18;
     private static final int TOKEN_VISIBLE_SUFFIX = 10;
+
+    private static final String REQUEST_ID_HEADER = "X-Request-Id";
+    private static final String CORRELATION_ID_HEADER = "X-Correlation-Id";
+    private static final String ERROR_ID_HEADER = "X-Error-Id";
+    private static final String FORWARDED_HOST_HEADER = "X-Forwarded-Host";
+    private static final String FORWARDED_PROTO_HEADER = "X-Forwarded-Proto";
+    private static final String FORWARDED_PORT_HEADER = "X-Forwarded-Port";
 
     private final AppPropertiesConfig appProperties;
     private final AuthService authService;
@@ -50,19 +62,64 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
             HttpServletResponse response,
             Authentication authentication
     ) throws IOException, ServletException {
+        String requestId = resolveRequestId(request);
+        String correlationId = resolveCorrelationId(request, requestId);
+        String traceId = UUID.randomUUID().toString().replace("-", "");
+
         OAuth2UserInfo userInfo = resolveUserInfo(authentication);
+        String registrationId = resolveRegistrationId(authentication);
+        String ipAddress = IpAddressUtil.extractClientIp(request);
+        String userAgent = UserAgentUtil.extractUserAgent(request);
+
+        log.info(
+                "oauth2_login_success_start traceId={} requestId={} correlationId={} provider={} email={} providerUserId={} ipAddress={} callbackUri={} forwardedHost={} forwardedProto={} forwardedPort={}",
+                traceId,
+                requestId,
+                correlationId,
+                userInfo.proveedor(),
+                maskEmail(userInfo.email()),
+                safe(userInfo.providerUserId(), 120, "UNKNOWN"),
+                ipAddress,
+                safe(request == null ? null : request.getRequestURI(), 300, "UNKNOWN"),
+                resolveHeader(request, FORWARDED_HOST_HEADER, "UNKNOWN"),
+                resolveHeader(request, FORWARDED_PROTO_HEADER, "UNKNOWN"),
+                resolveHeader(request, FORWARDED_PORT_HEADER, "UNKNOWN")
+        );
 
         AuthTokenResponseDto tokenResponse = authService.loginOAuth2(
                 userInfo,
                 null,
-                IpAddressUtil.extractClientIp(request),
-                UserAgentUtil.extractUserAgent(request)
+                ipAddress,
+                userAgent
+        );
+
+        log.info(
+                "oauth2_login_success_completed traceId={} requestId={} correlationId={} provider={} userId={} username={} email={} rol={} sessionId={} tokenType={} accessTokenExpiresAt={} refreshTokenExpiresAt={}",
+                traceId,
+                requestId,
+                correlationId,
+                registrationId,
+                tokenResponse.user() == null ? null : tokenResponse.user().idUsuario(),
+                tokenResponse.user() == null ? "UNKNOWN" : safe(tokenResponse.user().username(), 120, "UNKNOWN"),
+                tokenResponse.user() == null ? "UNKNOWN" : maskEmail(tokenResponse.user().email()),
+                tokenResponse.user() == null ? "UNKNOWN" : safe(tokenResponse.user().codigoRol(), 80, "UNKNOWN"),
+                tokenResponse.session() == null ? null : tokenResponse.session().idSesion(),
+                safe(tokenResponse.tokenType(), 30, "UNKNOWN"),
+                tokenResponse.accessTokenExpiresAt(),
+                tokenResponse.refreshTokenExpiresAt()
         );
 
         Map<String, Object> payload = buildFrontendPayload(tokenResponse);
         Map<String, Object> safePayload = buildSafeDiagnosticPayload(tokenResponse);
 
-        writePostMessageResponse(response, payload, safePayload);
+        writePostMessageResponse(
+                response,
+                payload,
+                safePayload,
+                requestId,
+                correlationId,
+                traceId
+        );
     }
 
     private OAuth2UserInfo resolveUserInfo(Authentication authentication) {
@@ -148,7 +205,10 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
     private void writePostMessageResponse(
             HttpServletResponse response,
             Map<String, Object> payload,
-            Map<String, Object> safePayload
+            Map<String, Object> safePayload,
+            String requestId,
+            String correlationId,
+            String traceId
     ) throws IOException {
         String jsonPayload = objectMapper.writeValueAsString(payload);
         String safeJsonPayload = objectMapper.writeValueAsString(safePayload);
@@ -163,6 +223,9 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
         response.setHeader("X-Frame-Options", "DENY");
         response.setHeader("Referrer-Policy", "no-referrer");
         response.setHeader("Robots", "noindex, nofollow");
+        response.setHeader(REQUEST_ID_HEADER, requestId);
+        response.setHeader(CORRELATION_ID_HEADER, correlationId);
+        response.setHeader(ERROR_ID_HEADER, traceId);
 
         response.getWriter().write("""
                 <!doctype html>
@@ -199,6 +262,10 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                             border-radius: 6px;
                             overflow: auto;
                         }
+                        .meta {
+                            color: #5f6b7a;
+                            font-size: 13px;
+                        }
                     </style>
                 </head>
                 <body>
@@ -212,6 +279,9 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                             Esta vista directa no muestra tokens completos por seguridad.
                             Para consumirlos en producción usa el frontend mediante postMessage.
                         </p>
+                        <p class="meta">requestId: %s</p>
+                        <p class="meta">correlationId: %s</p>
+                        <p class="meta">traceId: %s</p>
                         <pre id="payload"></pre>
                     </div>
 
@@ -231,9 +301,102 @@ public class OAuth2LoginSuccessHandler implements AuthenticationSuccessHandler {
                 </body>
                 </html>
                 """.formatted(
+                escapeHtml(requestId),
+                escapeHtml(correlationId),
+                escapeHtml(traceId),
                 jsonPayload,
                 safeJsonPayload,
                 objectMapper.writeValueAsString(frontendOrigin)
         ));
+    }
+
+    private String resolveRequestId(HttpServletRequest request) {
+        String value = resolveHeader(request, REQUEST_ID_HEADER, null);
+
+        if (value != null && !value.isBlank() && !"UNKNOWN".equalsIgnoreCase(value)) {
+            return value;
+        }
+
+        return UUID.randomUUID().toString();
+    }
+
+    private String resolveCorrelationId(
+            HttpServletRequest request,
+            String requestId
+    ) {
+        String value = resolveHeader(request, CORRELATION_ID_HEADER, null);
+
+        if (value != null && !value.isBlank() && !"UNKNOWN".equalsIgnoreCase(value)) {
+            return value;
+        }
+
+        return requestId;
+    }
+
+    private String resolveHeader(
+            HttpServletRequest request,
+            String headerName,
+            String fallback
+    ) {
+        if (request == null || headerName == null || headerName.isBlank()) {
+            return fallback;
+        }
+
+        return safe(request.getHeader(headerName), 300, fallback);
+    }
+
+    private String safe(
+            String value,
+            int maxLength,
+            String fallback
+    ) {
+        if (value == null || value.isBlank()) {
+            return fallback;
+        }
+
+        String sanitized = value
+                .trim()
+                .replace("\r", "")
+                .replace("\n", "")
+                .replace("\t", " ");
+
+        if (sanitized.isBlank()) {
+            return fallback;
+        }
+
+        if (maxLength > 0 && sanitized.length() > maxLength) {
+            return sanitized.substring(0, maxLength);
+        }
+
+        return sanitized;
+    }
+
+    private String maskEmail(String email) {
+        String value = safe(email, 180, "UNKNOWN");
+
+        if ("UNKNOWN".equals(value) || !value.contains("@")) {
+            return value;
+        }
+
+        int at = value.indexOf('@');
+
+        if (at <= 2) {
+            return "***" + value.substring(at);
+        }
+
+        return value.substring(0, 2) + "***" + value.substring(at);
+    }
+
+    private String escapeHtml(String value) {
+        if (value == null) {
+            return "";
+        }
+
+        return value
+                .replace("&", "&amp;")
+                .replace("<", "&lt;")
+                .replace(">", "&gt;")
+                .replace("\"", "&quot;")
+                .replace("'", "&#39;");
     }
 }

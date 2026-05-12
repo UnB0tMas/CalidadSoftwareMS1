@@ -10,6 +10,8 @@ import com.upsjb.ms1.domain.enums.TipoLogin;
 import com.upsjb.ms1.domain.value.IpAddressValue;
 import com.upsjb.ms1.domain.value.UserAgentValue;
 import com.upsjb.ms1.dto.auth.response.SessionResponseDto;
+import com.upsjb.ms1.dto.internal.request.InternalSessionValidationRequestDto;
+import com.upsjb.ms1.dto.internal.response.InternalSessionValidationResponseDto;
 import com.upsjb.ms1.dto.shared.PageRequestDto;
 import com.upsjb.ms1.dto.shared.PageResponseDto;
 import com.upsjb.ms1.mapper.UsuarioSesionMapper;
@@ -19,6 +21,7 @@ import com.upsjb.ms1.repository.UsuarioSesionRepository;
 import com.upsjb.ms1.security.principal.AuthenticatedUserContext;
 import com.upsjb.ms1.service.contract.AuditoriaSeguridadService;
 import com.upsjb.ms1.service.contract.SesionService;
+import com.upsjb.ms1.shared.exception.ForbiddenException;
 import com.upsjb.ms1.shared.exception.NotFoundException;
 import com.upsjb.ms1.shared.exception.UnauthorizedException;
 import com.upsjb.ms1.shared.exception.ValidationException;
@@ -503,5 +506,85 @@ public class SesionServiceImpl implements SesionService {
         }
 
         return value.substring(0, maxLength);
+    }
+
+// agregar en: src/main/java/com/upsjb/ms1/service/impl/SesionServiceImpl.java
+
+    @Override
+    @Transactional(readOnly = true)
+    public InternalSessionValidationResponseDto validateInternalSession(
+            AuthenticatedUserContext actor,
+            InternalSessionValidationRequestDto request
+    ) {
+        if (actor == null || !actor.authenticated()) {
+            throw new UnauthorizedException(
+                    "MS1_SESSION_VALIDATION_UNAUTHENTICATED",
+                    "No existe usuario autenticado para validar la sesión."
+            );
+        }
+
+        if (request == null) {
+            throw new ValidationException(
+                    "MS1_SESSION_VALIDATION_REQUEST_REQUIRED",
+                    "La solicitud de validación de sesión es obligatoria."
+            );
+        }
+
+        if (request.idUsuarioMs1() == null || request.idUsuarioMs1() <= 0) {
+            throw new ValidationException(
+                    "MS1_SESSION_VALIDATION_USER_REQUIRED",
+                    "El idUsuarioMs1 es obligatorio."
+            );
+        }
+
+        if (request.sessionId() == null || request.sessionId() <= 0) {
+            throw new ValidationException(
+                    "MS1_SESSION_VALIDATION_SESSION_REQUIRED",
+                    "El sessionId es obligatorio."
+            );
+        }
+
+        if (!request.idUsuarioMs1().equals(actor.idUsuario())) {
+            throw new ForbiddenException(
+                    "MS1_SESSION_VALIDATION_USER_MISMATCH",
+                    "La sesión consultada no pertenece al usuario autenticado."
+            );
+        }
+
+        if (!request.sessionId().equals(actor.sessionId())) {
+            throw new ForbiddenException(
+                    "MS1_SESSION_VALIDATION_SESSION_MISMATCH",
+                    "La sesión consultada no coincide con el token autenticado."
+            );
+        }
+
+        UsuarioSesion sesion = usuarioSesionRepository.findByIdAndUsuario_Id(
+                request.sessionId(),
+                request.idUsuarioMs1()
+        ).orElseThrow(() -> new UnauthorizedException(
+                "MS1_SESSION_NOT_FOUND",
+                "La sesión MS1 no existe o no pertenece al usuario autenticado."
+        ));
+
+        Instant now = Instant.now(clock);
+
+        if (!sesion.estaActiva() || !sesion.estaVigente(now)) {
+            return InternalSessionValidationResponseDto.inactive(
+                    request.idUsuarioMs1(),
+                    request.sessionId(),
+                    sesion.getEstado() == null ? "INVALIDA" : sesion.getEstado().name(),
+                    "La sesión MS1 no está activa o ya expiró."
+            );
+        }
+
+        Usuario usuario = sesion.getUsuario();
+
+        return InternalSessionValidationResponseDto.active(
+                usuario.getId(),
+                sesion.getId(),
+                usuario.getUsername() == null ? null : usuario.getUsername().getValue(),
+                usuario.getEmail() == null ? null : usuario.getEmail().getValue(),
+                usuario.getRol() == null ? null : usuario.getRol().getCodigo()
+        );
     }
 }
